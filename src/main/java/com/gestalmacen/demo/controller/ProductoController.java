@@ -1,7 +1,10 @@
 package com.gestalmacen.demo.controller;
 
-import com.gestalmacen.demo.model.Producto;
+import com.gestalmacen.demo.dto.request.ProductoRequestDTO;
+import com.gestalmacen.demo.dto.response.ProductoResponseDTO;
 import com.gestalmacen.demo.service.ProductoService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -9,66 +12,48 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/productos")
 public class ProductoController {
-  private final ProductoService productoService;
+
+    private final ProductoService productoService;
 
     public ProductoController(ProductoService productoService) {
         this.productoService = productoService;
     }
 
-    /**
-     * URL: GET http://localhost:8080/api/productos
-     * Propósito: Ver todo el catálogo de la bodega.
-     */
-    @GetMapping
-    public List<Producto> listarProductos(@RequestHeader("empresa-id") Long empresaId) {
-        return productoService.listarProductosPorEmpresa(empresaId);
-    }
-
-    /**
-     * URL: GET http://localhost:8080/api/productos/1
-     * Propósito: Ver el detalle de un solo producto.
-     */
-    @GetMapping("/{id}")
-    public Producto obtenerProducto(@RequestHeader("empresa-id") Long empresaId, @PathVariable Long id) {
-        return productoService.obtenerProducto(id, empresaId);
-    }
-
-    /**
-     * URL: POST http://localhost:8080/api/productos
-     * Propósito: Agregar un nuevo producto al catálogo.
-     */
     @PostMapping
-    public Producto registrarProducto(@RequestHeader("empresa-id") Long empresaId, 
-                                      @RequestBody Producto nuevoProducto) {
-        // Aseguramos el aislamiento de datos
-        nuevoProducto.setEmpresaId(empresaId);
-        return productoService.registrarProducto(nuevoProducto);
+    public ResponseEntity<ProductoResponseDTO> crear(
+            @RequestHeader("empresa-id") Long empresaId,
+            @RequestBody ProductoRequestDTO dto) {
+        return new ResponseEntity<>(productoService.crearProducto(dto, empresaId), HttpStatus.CREATED);
     }
 
-    /**
-     * URL: PUT http://localhost:8080/api/productos/1
-     * Propósito: Actualizar el precio, código de barras, etc.
-     */
+    @GetMapping
+    public ResponseEntity<List<ProductoResponseDTO>> listarCatologo(
+            @RequestHeader("empresa-id") Long empresaId) {
+        return ResponseEntity.ok(productoService.listarCatologoPorEmpresa(empresaId));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ProductoResponseDTO> obtener(
+            @PathVariable Long id,
+            @RequestHeader("empresa-id") Long empresaId) {
+        return ResponseEntity.ok(productoService.obtenerPorId(id, empresaId));
+    }
+
     @PutMapping("/{id}")
-    public Producto actualizarProducto(@RequestHeader("empresa-id") Long empresaId,
-                                       @PathVariable Long id,
-                                       @RequestBody Producto datosActualizados) {
-        return productoService.actualizarProducto(id, empresaId, datosActualizados);
+    public ResponseEntity<ProductoResponseDTO> actualizar(
+            @PathVariable Long id,
+            @RequestHeader("empresa-id") Long empresaId,
+            @RequestBody ProductoRequestDTO dto) {
+        return ResponseEntity.ok(productoService.actualizarProducto(id, empresaId, dto));
     }
 
-    /**
-     * URL: DELETE http://localhost:8080/api/productos/1
-     * Propósito: Enviar el producto a la papelera (inactivarlo).
-     */
-    @DeleteMapping("/{id}")
-    public String inactivarProducto(@RequestHeader("empresa-id") Long empresaId, @PathVariable Long id) {
-        boolean exito = productoService.inactivarProducto(id, empresaId);
-        if (exito) {
-            // Nota para tu proyecto: Aquí en un futuro podrías llamar 
-            // al PapeleraProductoService para registrar quién lo borró.
-            return "Producto inactivado correctamente.";
-        }
-        return "Error: Producto no encontrado.";
-    }  
+    @PatchMapping("/{id}/estado")
+    public ResponseEntity<Void> cambiarEstado(
+            @PathVariable Long id,
+            @RequestHeader("empresa-id") Long empresaId,
+            @RequestParam String estado) {
+        productoService.cambiarEstado(id, empresaId, estado);
+        return ResponseEntity.noContent().build();
+    }
 }
   

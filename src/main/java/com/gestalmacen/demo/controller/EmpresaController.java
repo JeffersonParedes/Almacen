@@ -1,17 +1,18 @@
 package com.gestalmacen.demo.controller;
 
-import com.gestalmacen.demo.model.Empresa;
+import com.gestalmacen.demo.dto.request.EmpresaRequestDTO;
+import com.gestalmacen.demo.dto.response.EmpresaResponseDTO;
 import com.gestalmacen.demo.service.EmpresaService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-// Le decimos a Spring Boot que esta clase recibirá peticiones web y devolverá JSON
 @RestController
-// Definimos la URL base para todos los métodos de este controlador
 @RequestMapping("/api/empresas")
 public class EmpresaController {
-    // Inyectamos el servicio (nuestro "cocinero")
+
     private final EmpresaService empresaService;
 
     public EmpresaController(EmpresaService empresaService) {
@@ -19,39 +20,50 @@ public class EmpresaController {
     }
 
     /**
-     * URL: GET http://localhost:8080/api/empresas
-     * Propósito: Listar todas las empresas registradas
-     */
-    @GetMapping
-    public List<Empresa> listarEmpresas() {
-        return empresaService.listarTodasLasEmpresas();
-    }
-
-    /**
-     * URL: GET http://localhost:8080/api/empresas/1
-     * Propósito: Obtener los datos de una empresa específica por su ID
-     */
-    @GetMapping("/{id}")
-    public Empresa obtenerEmpresa(@PathVariable Long id) {
-        return empresaService.obtenerDatosEmpresa(id);
-    }
-
-    /**
-     * URL: POST http://localhost:8080/api/empresas
-     * Propósito: Registrar una nueva bodega en el sistema
+     * POST: /api/empresas
      */
     @PostMapping
-    public Empresa registrarEmpresa(@RequestBody Empresa nuevaEmpresa) {
-        return empresaService.registrarNuevaEmpresa(nuevaEmpresa);
+    public ResponseEntity<EmpresaResponseDTO> registrarEmpresa(@RequestBody EmpresaRequestDTO dto) {
+        EmpresaResponseDTO creada = empresaService.registrarNuevaEmpresa(dto);
+        return new ResponseEntity<>(creada, HttpStatus.CREATED);
     }
 
     /**
-     * URL: PUT http://localhost:8080/api/empresas/1/estado
-     * Propósito: Suspender o reactivar una empresa
+     * GET: /api/empresas/{id}
      */
-    @PutMapping("/{id}/estado")
-    public Empresa cambiarEstado(@PathVariable Long id, @RequestParam String nuevoEstado) {
-        return empresaService.cambiarEstado(id, nuevoEstado);
+    @GetMapping("/{id}")
+    public ResponseEntity<EmpresaResponseDTO> obtenerEmpresa(@PathVariable Long id) {
+        return ResponseEntity.ok(empresaService.obtenerDatosEmpresa(id));
     }
-}
-  
+
+    /**
+     * GET: /api/empresas
+     */
+    @GetMapping
+    public ResponseEntity<List<EmpresaResponseDTO>> listarEmpresas() {
+        return ResponseEntity.ok(empresaService.listarTodasLasEmpresas());
+    }
+
+    /**
+     * PUT: /api/empresas/{id}
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<EmpresaResponseDTO> actualizarDatos(
+            @PathVariable Long id,
+            @RequestParam String direccion,
+            @RequestParam String telefono) {
+        
+        return ResponseEntity.ok(empresaService.actualizarDatosGenerales(id, direccion, telefono));
+    }
+
+    /**
+     * PATCH: /api/empresas/{id}/estado
+     */
+    @PatchMapping("/{id}/estado")
+    public ResponseEntity<EmpresaResponseDTO> cambiarEstadoEmpresa(
+            @PathVariable Long id,
+            @RequestParam String nuevoEstado) {
+        
+        return ResponseEntity.ok(empresaService.cambiarEstado(id, nuevoEstado));
+    }
+}  

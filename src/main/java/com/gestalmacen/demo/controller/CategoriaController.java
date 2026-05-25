@@ -1,7 +1,9 @@
 package com.gestalmacen.demo.controller;
-
-import com.gestalmacen.demo.model.Categoria;
+import com.gestalmacen.demo.dto.request.CategoriaRequestDTO;
+import com.gestalmacen.demo.dto.response.CategoriaResponseDTO;
 import com.gestalmacen.demo.service.CategoriaService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -9,57 +11,47 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/categorias")
 public class CategoriaController {
-    private final CategoriaService categoriaService;
+ private final CategoriaService categoriaService;
 
     public CategoriaController(CategoriaService categoriaService) {
         this.categoriaService = categoriaService;
     }
 
-    /**
-     * URL: GET http://localhost:8080/api/categorias
-     * Propósito: Listar las categorías activas de la bodega que hace la consulta.
-     */
-    @GetMapping
-    public List<Categoria> listarCategorias(@RequestHeader("empresa-id") Long empresaId) {
-        return categoriaService.listarCategoriasPorEmpresa(empresaId);
-    }
-
-    /**
-     * URL: POST http://localhost:8080/api/categorias
-     * Propósito: Crear una nueva categoría (ej. "Lácteos").
-     */
     @PostMapping
-    public Categoria registrarCategoria(@RequestHeader("empresa-id") Long empresaId, 
-                                        @RequestBody Categoria nuevaCategoria) {
-        // Regla de arquitectura SaaS: Atamos el nuevo registro a la empresa del usuario
-        nuevaCategoria.setEmpresaId(empresaId);
-        return categoriaService.registrarCategoria(nuevaCategoria);
+    public ResponseEntity<CategoriaResponseDTO> crear(
+            @RequestHeader("empresa-id") Long empresaId,
+            @RequestBody CategoriaRequestDTO dto) {
+        return new ResponseEntity<>(categoriaService.crearCategoria(dto, empresaId), HttpStatus.CREATED);
     }
 
-    /**
-     * URL: PUT http://localhost:8080/api/categorias/1
-     * Propósito: Corregir un nombre o descripción.
-     */
+    @GetMapping
+    public ResponseEntity<List<CategoriaResponseDTO>> listar(
+            @RequestHeader("empresa-id") Long empresaId) {
+        return ResponseEntity.ok(categoriaService.listarPorEmpresa(empresaId));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<CategoriaResponseDTO> obtener(
+            @PathVariable Long id,
+            @RequestHeader("empresa-id") Long empresaId) {
+        return ResponseEntity.ok(categoriaService.obtenerPorId(id, empresaId));
+    }
+
     @PutMapping("/{id}")
-    public Categoria actualizarCategoria(@RequestHeader("empresa-id") Long empresaId,
-                                         @PathVariable Long id,
-                                         @RequestBody Categoria datosActualizados) {
-        return categoriaService.actualizarCategoria(id, empresaId, 
-                                                    datosActualizados.getNombre(), 
-                                                    datosActualizados.getDescripcion());
+    public ResponseEntity<CategoriaResponseDTO> actualizar(
+            @PathVariable Long id,
+            @RequestHeader("empresa-id") Long empresaId,
+            @RequestBody CategoriaRequestDTO dto) {
+        return ResponseEntity.ok(categoriaService.actualizarCategoria(id, empresaId, dto));
     }
 
-    /**
-     * URL: DELETE http://localhost:8080/api/categorias/1
-     * Propósito: Inactivar una categoría.
-     */
-    @DeleteMapping("/{id}")
-    public String inactivarCategoria(@RequestHeader("empresa-id") Long empresaId, @PathVariable Long id) {
-        boolean exito = categoriaService.inactivarCategoria(id, empresaId);
-        if (exito) {
-            return "Categoría inactivada correctamente.";
-        }
-        return "Error: Categoría no encontrada o no pertenece a su empresa.";
+    @PatchMapping("/{id}/estado")
+    public ResponseEntity<Void> cambiarEstado(
+            @PathVariable Long id,
+            @RequestHeader("empresa-id") Long empresaId,
+            @RequestParam String estado) {
+        categoriaService.cambiarEstado(id, empresaId, estado);
+        return ResponseEntity.noContent().build();
     }
 }
-  
+    

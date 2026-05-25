@@ -1,96 +1,71 @@
 package com.gestalmacen.demo.service;
 
-import com.gestalmacen.demo.model.Inventario;
+import com.gestalmacen.demo.dto.request.InventarioRequestDTO;
+import com.gestalmacen.demo.dto.response.InventarioResponseDTO;
+import com.gestalmacen.demo.entity.Inventario;
+import com.gestalmacen.demo.exception.RecursoNoEncontradoException;
+import com.gestalmacen.demo.mapper.InventarioMapper;
+import com.gestalmacen.demo.repository.InventarioRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class InventarioService {
-    private List<Inventario> inventarios;
-    private Long contadorId = 1L;
+ private final InventarioRepository inventarioRepository;
 
-    public InventarioService() {
-        inventarios = new ArrayList<>();
-        
-        // Datos de prueba (Empresa 1)
-        // Arroz (Producto 1) en la Tienda (Almacén 1) -> Hay 50 kilos (Stock mínimo 10)
-        inventarios.add(new Inventario(contadorId++, 1L, 1L, 1L, 50.0, 10.0, 
-                                       LocalDateTime.now(), LocalDateTime.now(), LocalDateTime.now()));
-        
-        // Arroz (Producto 1) en el Depósito (Almacén 2) -> Hay 200 kilos (Stock mínimo 50)
-        inventarios.add(new Inventario(contadorId++, 1L, 1L, 2L, 200.0, 50.0, 
-                                       LocalDateTime.now(), LocalDateTime.now(), LocalDateTime.now()));
-                                       
-        // Inka Kola (Producto 2) en la Tienda (Almacén 1) -> Hay 24 botellas (Stock mínimo 12)
-        inventarios.add(new Inventario(contadorId++, 1L, 2L, 1L, 24.0, 12.0, 
-                                       LocalDateTime.now(), LocalDateTime.now(), LocalDateTime.now()));
+    public InventarioService(InventarioRepository inventarioRepository) {
+        this.inventarioRepository = inventarioRepository;
     }
 
     /**
-     * 1. Consultar el stock específico de un producto en un almacén concreto
+     * 1. Registrar o Actualizar Stock (Upsert)
+     * Si el producto ya tiene stock en ese almacén, lo actualiza. Si no, crea la fila.
      */
-    public Inventario obtenerInventarioEspecifico(Long productoId, Long almacenId, Long empresaId) {
-        for (Inventario inv : inventarios) {
-            if (inv.getProductoId().equals(productoId) && 
-                inv.getAlmacenId().equals(almacenId) && 
-                inv.getEmpresaId().equals(empresaId)) {
-                return inv;
-            }
-        }
-        return null; // Significa que este producto nunca ha entrado a ese almacén
-    }
-
-    /**
-     * 2. Consultar Stock Global (Suma todo lo que hay en la empresa de ese producto)
-     */
-    public Double consultarStockGlobal(Long productoId, Long empresaId) {
-        Double stockTotal = 0.0;
-        for (Inventario inv : inventarios) {
-            if (inv.getProductoId().equals(productoId) && inv.getEmpresaId().equals(empresaId)) {
-                stockTotal += inv.getStockActual();
-            }
-        }
-        return stockTotal;
-    }
-
-    /**
-     * 3. Sumar Stock (Llamado por Solicitud de Entrada)
-     */
-    public void sumarStock(Long productoId, Long almacenId, Long empresaId, Double cantidad) {
-        Inventario inv = obtenerInventarioEspecifico(productoId, almacenId, empresaId);
+    public InventarioResponseDTO registrarOActualizarInventario(InventarioRequestDTO dto, Long empresaId) {
         
-        if (inv != null) {
-            // Si ya existe el registro, le sumamos la cantidad
-            inv.setStockActual(inv.getStockActual() + cantidad);
-            inv.setUltimaActualizacion(LocalDateTime.now());
+        // Buscamos si ya existe la relación Producto-Almacén usando tu método del Repository
+        Inventario inventario = inventarioRepository
+                .findByProductoIdAndAlmacenIdAndEmpresaId(dto.getProductoId(), dto.getAlmacenId(), empresaId)
+                .orElse(null);
+
+        if (inventario == null) {
+            // Es la primera vez que este producto entra a este almacén: Lo creamos
+            inventario = InventarioMapper.toEntity(dto, empresaId);
+            inventario.setUltimaActualizacion(LocalDateTime.now());
         } else {
-            // Si el producto nunca había estado en este almacén, creamos el registro desde cero
-            Inventario nuevoInv = new Inventario(contadorId++, empresaId, productoId, almacenId, 
-                                                 cantidad, 5.0, // Stock mínimo por defecto
-                                                 LocalDateTime.now(), LocalDateTime.now(), LocalDateTime.now());
-            inventarios.add(nuevoInv);
+            // Ya existía: Solo actualizamos las cantidades
+            inventario.setStockActual(dto.getStockActual());
+            inventario.setStockMinimo(dto.getStockMinimo());
+            inventario.setUltimaActualizacion(LocalDateTime.now());
         }
+
+        Inventario guardado = inventarioRepository.save(inventario);
+        return InventarioMapper.toDto(guardado);
     }
 
     /**
-     * 4. Restar Stock (Llamado por Solicitud de Salida o Venta)
+     * 2. Consultar el stock exacto de un producto en un solo almacén
      */
-    public boolean restarStock(Long productoId, Long almacenId, Long empresaId, Double cantidad) {
-        Inventario inv = obtenerInventarioEspecifico(productoId, almacenId, empresaId);
+    public InventarioResponseDTO consultarStockEnAlmacen(Long productoId, Long almacenId, Long empresaId) {
+        Inventario inventario = inventarioRepository
+                .findByProductoIdAndAlmacenIdAndEmpresaId(productoId, almacenId, empresaId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No hay registro de inventario para este producto en el almacén indicado."));
         
-        if (inv != null) {
-            // Validamos que haya stock suficiente para restar
-            if (inv.getStockActual() >= cantidad) {
-                inv.setStockActual(inv.getStockActual() - cantidad);
-                inv.setUltimaActualizacion(LocalDateTime.now());
-                return true; // Operación exitosa
-            } else {
-                throw new IllegalArgumentException("Error: Stock insuficiente en el almacén seleccionado.");
-            }
-        }
-        throw new IllegalArgumentException("Error: El producto no existe en este almacén.");
-    }  
+        return InventarioMapper.toDto(inventario);
+    }
+
+    /**
+     * 3. Consultar stock global (Trae el desglose del producto en TODOS los almacenes de la empresa)
+     */
+    public List<InventarioResponseDTO> consultarStockGlobal(Long productoId, Long empresaId) {
+        // Usamos tu segundo método del Repository
+        List<Inventario> inventarios = inventarioRepository.findByProductoIdAndEmpresaId(productoId, empresaId);
+        
+        return inventarios.stream()
+                .map(InventarioMapper::toDto)
+                .collect(Collectors.toList());
+    }
 }

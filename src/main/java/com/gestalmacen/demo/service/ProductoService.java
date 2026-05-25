@@ -1,102 +1,66 @@
 package com.gestalmacen.demo.service;
 
-import com.gestalmacen.demo.model.Producto;
+import com.gestalmacen.demo.dto.request.ProductoRequestDTO;
+import com.gestalmacen.demo.dto.response.ProductoResponseDTO;
+import com.gestalmacen.demo.entity.Producto;
+import com.gestalmacen.demo.exception.RecursoNoEncontradoException;
+import com.gestalmacen.demo.mapper.ProductoMapper;
+import com.gestalmacen.demo.repository.ProductoRepository;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class ProductoService {
-    private List<Producto> productos;
-    private Long contadorId = 1L;
+ private final ProductoRepository productoRepository;
 
-    public ProductoService() {
-        productos = new ArrayList<>();
-        
-        // Datos de prueba para la "Bodega Central" (empresaId = 1)
-        // categoriaId = 1 (Abarrotes), 2 (Bebidas)
-        productos.add(new Producto(contadorId++, 1L, 1L, "7751234567890", 
-                                   "Arroz Costeño 1kg", "Arroz superior embolsado", 
-                                   4.50, "url_imagen_arroz.jpg", "ACTIVO", 
-                                   LocalDateTime.now(), LocalDateTime.now()));
-                                   
-        productos.add(new Producto(contadorId++, 1L, 2L, "7759876543210", 
-                                   "Inka Kola 3L", "Gaseosa sabor original", 
-                                   11.00, "url_imagen_inka.jpg", "ACTIVO", 
-                                   LocalDateTime.now(), LocalDateTime.now()));
+    public ProductoService(ProductoRepository productoRepository) {
+        this.productoRepository = productoRepository;
     }
 
-    /**
-     * 1. Registrar un nuevo producto en el catálogo
-     */
-    public Producto registrarProducto(Producto nuevoProducto) {
-        nuevoProducto.setId(contadorId++);
-        nuevoProducto.setEstado("ACTIVO");
-        nuevoProducto.setCreatedAt(LocalDateTime.now());
-        nuevoProducto.setUpdatedAt(LocalDateTime.now());
+    public ProductoResponseDTO crearProducto(ProductoRequestDTO dto, Long empresaId) {
+        // Convertimos el DTO a Entidad. El Mapper se encargará de setear la Empresa y Categoría.
+        Producto nuevoProducto = ProductoMapper.toEntity(dto, empresaId);
+        Producto productoGuardado = productoRepository.save(nuevoProducto);
+        return ProductoMapper.toDto(productoGuardado);
+    }
+public List<ProductoResponseDTO> listarCatologoPorEmpresa(Long empresaId) {
+        // Usamos tu método exacto del Repository: buscamos explícitamente los productos "ACTIVOS"
+        List<Producto> productosBD = productoRepository.findByEmpresaIdAndEstado(empresaId, "ACTIVO");
         
-        productos.add(nuevoProducto);
-        return nuevoProducto;
+        return productosBD.stream()
+                .map(ProductoMapper::toDto)
+                .collect(Collectors.toList());
+    }  
+
+    public ProductoResponseDTO obtenerPorId(Long id, Long empresaId) {
+        Producto producto = productoRepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado en el catálogo de su empresa."));
+        return ProductoMapper.toDto(producto);
     }
 
-    /**
-     * 2. Listar productos (Aislamiento de Datos por Empresa)
-     */
-    public List<Producto> listarProductosPorEmpresa(Long empresaId) {
-        List<Producto> listaFiltrada = new ArrayList<>();
+    public ProductoResponseDTO actualizarProducto(Long id, Long empresaId, ProductoRequestDTO dto) {
+        Producto producto = productoRepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No se puede actualizar. Producto no encontrado."));
         
-        for (Producto p : productos) {
-            if (p.getEmpresaId().equals(empresaId) && p.getEstado().equals("ACTIVO")) {
-                listaFiltrada.add(p);
-            }
-        }
-        return listaFiltrada;
+        // Actualizamos los datos físicos y comerciales
+        producto.setNombre(dto.getNombre());
+        producto.setCodigoBarras(dto.getCodigoBarras());
+        producto.setDescripcion(dto.getDescripcion());
+        producto.setPrecio(dto.getPrecio());
+        producto.setImagenUrl(dto.getImagenUrl());
+        // Nota: Para cambiar de categoría se requeriría setear la nueva categoría aquí si lo permites
+        
+        Producto actualizado = productoRepository.save(producto);
+        return ProductoMapper.toDto(actualizado);
     }
 
-    /**
-     * 3. Obtener el detalle de un producto específico
-     */
-    public Producto obtenerProducto(Long id, Long empresaId) {
-        for (Producto p : productos) {
-            if (p.getId().equals(id) && p.getEmpresaId().equals(empresaId)) {
-                return p;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 4. Actualizar información del producto (Ej: Cambio de precio o nombre)
-     */
-    public Producto actualizarProducto(Long id, Long empresaId, Producto datosActualizados) {
-        Producto productoExistente = obtenerProducto(id, empresaId);
+    public void cambiarEstado(Long id, Long empresaId, String nuevoEstado) {
+        Producto producto = productoRepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No se puede cambiar el estado. Producto no encontrado."));
         
-        if (productoExistente != null) {
-            productoExistente.setNombre(datosActualizados.getNombre());
-            productoExistente.setDescripcion(datosActualizados.getDescripcion());
-            productoExistente.setPrecio(datosActualizados.getPrecio());
-            productoExistente.setCodigoBarras(datosActualizados.getCodigoBarras());
-            productoExistente.setCategoriaId(datosActualizados.getCategoriaId());
-            productoExistente.setImagenUrl(datosActualizados.getImagenUrl());
-            productoExistente.setUpdatedAt(LocalDateTime.now());
-        }
-        
-        return productoExistente;
-    }
-
-    /**
-     * 5. Inactivar Producto (Borrado lógico)
-     */
-    public boolean inactivarProducto(Long id, Long empresaId) {
-        Producto producto = obtenerProducto(id, empresaId);
-        
-        if (producto != null) {
-            producto.setEstado("INACTIVO");
-            producto.setUpdatedAt(LocalDateTime.now());
-            return true;
-        }
-        return false;
+        producto.setEstado(nuevoEstado);
+        productoRepository.save(producto);
     }
 }  

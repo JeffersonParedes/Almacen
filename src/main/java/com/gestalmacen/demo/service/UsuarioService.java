@@ -1,88 +1,86 @@
 package com.gestalmacen.demo.service;
 
-import com.gestalmacen.demo.model.Usuario;
+import com.gestalmacen.demo.dto.request.UsuarioRequestDTO;
+import com.gestalmacen.demo.dto.response.UsuarioResponseDTO;
+import com.gestalmacen.demo.entity.Usuario;
+import com.gestalmacen.demo.exception.RecursoNoEncontradoException;
+import com.gestalmacen.demo.exception.ReglaNegocioException;
+import com.gestalmacen.demo.mapper.UsuarioMapper;
+import com.gestalmacen.demo.repository.UsuarioRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors; 
 
 @Service
 public class UsuarioService {
 
-    // Simulamos la base de datos en memoria usando una Lista
-    private List<Usuario> usuarios;
-    private Long contadorId = 1L; // Simulamos el AUTO_INCREMENT de la BD
+// 1. Inyectamos el Repository (Nuestro buscador oficial en MySQL)
+    private final UsuarioRepository usuarioRepository;
 
-    public UsuarioService() {
-        usuarios = new ArrayList<>();
-        // Agregamos un par de usuarios por defecto para que puedas hacer pruebas en Postman
-        usuarios.add(new Usuario(contadorId++, 1L, "admin_bodega", "1234", "Juan Perez", 
-                                 "ADMINISTRADOR", LocalDateTime.now(), true, 
-                                 LocalDateTime.now(), LocalDateTime.now()));
-                                 
-        usuarios.add(new Usuario(contadorId++, 1L, "vendedor1", "1234", "Maria Gomez", 
-                                 "VENDEDOR", LocalDateTime.now(), true, 
-                                 LocalDateTime.now(), LocalDateTime.now()));
+    public UsuarioService(UsuarioRepository usuarioRepository) {
+        this.usuarioRepository = usuarioRepository;
     }
 
     /**
      * 1. Autenticar Usuario (Login)
-     * Retorna el usuario si las credenciales son correctas y está activo.
+     * Ahora devuelve un DTO seguro (sin contraseña) y lanza error si falla.
      */
-    public Usuario autenticarUsuario(String nombreUsuario, String contrasena) {
-        for (Usuario u : usuarios) {
-            if (u.getUsuario().equals(nombreUsuario) && 
-                u.getContrasena().equals(contrasena) && 
-                u.getActivo()) {
-                
-                // Actualizamos su fecha de último acceso
-                u.setUltimoAcceso(LocalDateTime.now());
-                return u; 
-            }
-        }
-        return null; // En el Controller evaluaremos si es null para mandar un error 401
+    public UsuarioResponseDTO autenticarUsuario(String nombreUsuario, String contrasena) {
+        // Le pedimos a MySQL que busque exactamente ese usuario, con esa clave y que esté activo
+        Usuario usuario = usuarioRepository.findByUsuarioAndContrasenaAndActivoTrue(nombreUsuario, contrasena)
+                .orElseThrow(() -> new ReglaNegocioException("Credenciales incorrectas o usuario inactivo."));
+
+        // Si lo encuentra, actualizamos su fecha de acceso
+        usuario.setUltimoAcceso(LocalDateTime.now());
+        usuarioRepository.save(usuario); // Guardamos la hora en BD
+
+        // Devolvemos la versión segura sin contraseña
+        return UsuarioMapper.toDto(usuario);
     }
 
     /**
      * 2. Registrar Usuario
+     * Recibe un DTO y el ID de la empresa por separado por seguridad.
      */
-    public void registrarUsuario(Usuario nuevoUsuario) {
-        nuevoUsuario.setId(contadorId++);
-        nuevoUsuario.setActivo(true);
-        nuevoUsuario.setCreatedAt(LocalDateTime.now());
-        nuevoUsuario.setUpdatedAt(LocalDateTime.now());
+    public UsuarioResponseDTO registrarUsuario(UsuarioRequestDTO dto, Long empresaId) {
+        // El Mapper se encarga de convertir el DTO a Entity y asignarle la empresa
+        Usuario nuevoUsuario = UsuarioMapper.toEntity(dto, empresaId);
         
-        usuarios.add(nuevoUsuario);
+        // Lo guardamos en MySQL
+        Usuario usuarioGuardado = usuarioRepository.save(nuevoUsuario);
+        
+        // Devolvemos el DTO con el ID que MySQL le acaba de generar
+        return UsuarioMapper.toDto(usuarioGuardado);
     }
 
     /**
-     * 3. Listar Usuarios (Con Aislamiento de Datos por Empresa)
+     * 3. Listar Usuarios (Aislamiento por Empresa)
      */
-    public List<Usuario> listarUsuariosPorEmpresa(Long empresaId) {
-        List<Usuario> listaFiltrada = new ArrayList<>();
+    public List<UsuarioResponseDTO> listarUsuariosPorEmpresa(Long empresaId) {
+        // Buscamos en MySQL
+        List<Usuario> usuariosBD = usuarioRepository.findByEmpresaId(empresaId);
         
-        for (Usuario u : usuarios) {
-            // Solo devolvemos los usuarios que pertenezcan a la bodega solicitada
-            if (u.getEmpresaId().equals(empresaId)) {
-                listaFiltrada.add(u);
-            }
-        }
-        return listaFiltrada;
+        // Convertimos la lista de Entities a lista de DTOs seguros usando programación funcional (Streams)
+        return usuariosBD.stream()
+                .map(UsuarioMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     /**
      * 4. Desactivar Usuario (Borrado lógico)
      */
     public void desactivarUsuario(Long id, Long empresaId) {
-        for (Usuario u : usuarios) {
-            // Verificamos que el usuario exista y que realmente pertenezca a esa empresa
-            if (u.getId().equals(id) && u.getEmpresaId().equals(empresaId)) {
-                u.setActivo(false);
-                u.setUpdatedAt(LocalDateTime.now());
-                return; // Terminamos la ejecución porque ya lo encontramos
-            }
-        }
-    }
+        // Buscamos al usuario validando que exista y pertenezca a esa empresa
+        Usuario usuario = usuarioRepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado en su organización."));
+        
+        // Le quitamos el acceso
+        usuario.setActivo(false);
+        
+        // Actualizamos en MySQL
+        usuarioRepository.save(usuario);
+    }  
       
-}
+}  

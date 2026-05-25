@@ -1,96 +1,77 @@
 package com.gestalmacen.demo.service;
 
-import com.gestalmacen.demo.model.Almacen;
+import com.gestalmacen.demo.dto.request.AlmacenRequestDTO;
+import com.gestalmacen.demo.dto.response.AlmacenResponseDTO;
+import com.gestalmacen.demo.entity.Almacen;
+import com.gestalmacen.demo.exception.RecursoNoEncontradoException;
+import com.gestalmacen.demo.mapper.AlmacenMapper;
+import com.gestalmacen.demo.repository.AlmacenRepository;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class AlmacenService {
-    private List<Almacen> almacenes;
-    private Long contadorId = 1L;
+   private final AlmacenRepository almacenRepository;
 
-    public AlmacenService() {
-        almacenes = new ArrayList<>();
-        
-        // Datos de prueba para la "Bodega Central" (empresaId = 1)
-        almacenes.add(new Almacen(contadorId++, 1L, "Tienda Principal (Vitrina)", 
-                                  "Av. Pacífico Mz. A Lt. 1", "ACTIVO", 
-                                  LocalDateTime.now(), LocalDateTime.now()));
-                                  
-        almacenes.add(new Almacen(contadorId++, 1L, "Depósito Trasero", 
-                                  "Av. Pacífico Mz. A Lt. 1 (Parte posterior)", "ACTIVO", 
-                                  LocalDateTime.now(), LocalDateTime.now()));
+    public AlmacenService(AlmacenRepository almacenRepository) {
+        this.almacenRepository = almacenRepository;
     }
 
     /**
-     * 1. Registrar un nuevo almacén / ubicación
+     * 1. Crear un nuevo almacén asegurando que pertenezca a la empresa actual.
      */
-    public Almacen registrarAlmacen(Almacen nuevoAlmacen) {
-        nuevoAlmacen.setId(contadorId++);
-        nuevoAlmacen.setEstado("ACTIVO");
-        nuevoAlmacen.setCreatedAt(LocalDateTime.now());
-        nuevoAlmacen.setUpdatedAt(LocalDateTime.now());
+    public AlmacenResponseDTO crearAlmacen(AlmacenRequestDTO dto, Long empresaId) {
+        Almacen nuevoAlmacen = AlmacenMapper.toEntity(dto, empresaId);
+        Almacen almacenGuardado = almacenRepository.save(nuevoAlmacen);
+        return AlmacenMapper.toDto(almacenGuardado);
+    }
+
+  /**
+     * 2. Listar solo los almacenes del inquilino (Empresa) actual.
+     * EXCLUYE los que tengan estado "INACTIVO" para simular que fueron borrados.
+     */
+    public List<AlmacenResponseDTO> listarPorEmpresa(Long empresaId) {
+        // Usamos tu método personalizado en lugar del básico
+        List<Almacen> almacenesBD = almacenRepository.findByEmpresaIdAndEstadoNot(empresaId, "INACTIVO");
         
-        almacenes.add(nuevoAlmacen);
-        return nuevoAlmacen;
+        return almacenesBD.stream()
+                .map(AlmacenMapper::toDto)
+                .collect(Collectors.toList());
+    } 
+
+    /**
+     * 3. Obtener un almacén específico, validando doble seguridad (ID + Empresa).
+     */
+    public AlmacenResponseDTO obtenerPorId(Long id, Long empresaId) {
+        Almacen almacen = almacenRepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Almacén no encontrado en su organización."));
+        return AlmacenMapper.toDto(almacen);
     }
 
     /**
-     * 2. Listar almacenes (Aislamiento por Empresa)
+     * 4. Actualizar datos físicos del almacén.
      */
-    public List<Almacen> listarAlmacenesPorEmpresa(Long empresaId) {
-        List<Almacen> listaFiltrada = new ArrayList<>();
+    public AlmacenResponseDTO actualizarAlmacen(Long id, Long empresaId, AlmacenRequestDTO dto) {
+        Almacen almacen = almacenRepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No se puede actualizar. Almacén no encontrado."));
         
-        for (Almacen a : almacenes) {
-            // Filtramos por empresa y excluimos los que estén inactivos
-            if (a.getEmpresaId().equals(empresaId) && !a.getEstado().equals("INACTIVO")) {
-                listaFiltrada.add(a);
-            }
-        }
-        return listaFiltrada;
+        almacen.setNombre(dto.getNombre());
+        almacen.setDireccion(dto.getDireccion());
+        
+        Almacen actualizado = almacenRepository.save(almacen);
+        return AlmacenMapper.toDto(actualizado);
     }
 
     /**
-     * 3. Obtener un almacén específico
+     * 5. Activar, Inactivar o poner en Mantenimiento.
      */
-    public Almacen obtenerAlmacen(Long id, Long empresaId) {
-        for (Almacen a : almacenes) {
-            if (a.getId().equals(id) && a.getEmpresaId().equals(empresaId)) {
-                return a;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 4. Actualizar datos del almacén
-     */
-    public Almacen actualizarAlmacen(Long id, Long empresaId, String nuevoNombre, String nuevaDireccion) {
-        Almacen almacen = obtenerAlmacen(id, empresaId);
+    public void cambiarEstado(Long id, Long empresaId, String nuevoEstado) {
+        Almacen almacen = almacenRepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No se puede cambiar el estado. Almacén no encontrado."));
         
-        if (almacen != null) {
-            almacen.setNombre(nuevoNombre);
-            almacen.setDireccion(nuevaDireccion);
-            almacen.setUpdatedAt(LocalDateTime.now());
-        }
-        
-        return almacen;
-    }
-
-    /**
-     * 5. Cambiar estado (INACTIVO o EN_MANTENIMIENTO)
-     */
-    public Almacen cambiarEstado(Long id, Long empresaId, String nuevoEstado) {
-        Almacen almacen = obtenerAlmacen(id, empresaId);
-        
-        if (almacen != null) {
-            almacen.setEstado(nuevoEstado);
-            almacen.setUpdatedAt(LocalDateTime.now());
-        }
-        
-        return almacen;
+        almacen.setEstado(nuevoEstado);
+        almacenRepository.save(almacen);
     } 
 }

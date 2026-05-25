@@ -1,71 +1,59 @@
 package com.gestalmacen.demo.controller;
 
-import com.gestalmacen.demo.model.Usuario;
+import com.gestalmacen.demo.dto.request.UsuarioRequestDTO;
+import com.gestalmacen.demo.dto.response.UsuarioResponseDTO;
 import com.gestalmacen.demo.service.UsuarioService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/usuarios")
+
 public class UsuarioController {
-    private final UsuarioService usuarioService;
+   private final UsuarioService usuarioService;
 
     public UsuarioController(UsuarioService usuarioService) {
         this.usuarioService = usuarioService;
     }
 
-    /**
-     * URL: POST http://localhost:8080/api/usuarios/login?username=admin_bodega&password=1234
-     * Propósito: Iniciar sesión.
-     * Nota: Aquí NO pedimos el empresa-id, porque justamente el objetivo 
-     * de loguearse es que el sistema te devuelva tus datos (incluyendo tu empresaId).
-     */
+    // POST: /api/usuarios/login?usuario=admin&contrasena=1234
     @PostMapping("/login")
-    public Usuario login(@RequestParam String username, @RequestParam String password) {
-        Usuario usuarioValidado = usuarioService.autenticarUsuario(username, password);
+    public ResponseEntity<UsuarioResponseDTO> login(
+            @RequestParam String usuario, 
+            @RequestParam String contrasena) {
         
-        if (usuarioValidado == null) {
-            // En un proyecto más avanzado aquí lanzaríamos un Error 401 (Unauthorized)
-            throw new RuntimeException("Error: Credenciales incorrectas o usuario desactivado.");
-        }
-        
-        return usuarioValidado;
+        UsuarioResponseDTO response = usuarioService.autenticarUsuario(usuario, contrasena);
+        return ResponseEntity.ok(response);
     }
 
-    /**
-     * URL: GET http://localhost:8080/api/usuarios
-     * Propósito: Listar todos los trabajadores de MI bodega.
-     * Magia SaaS: Usamos @RequestHeader para capturar el ID de la empresa de forma invisible.
-     */
-    @GetMapping
-    public List<Usuario> listarUsuariosDeMiEmpresa(@RequestHeader("empresa-id") Long empresaId) {
-        return usuarioService.listarUsuariosPorEmpresa(empresaId);
-    }
-
-    /**
-     * URL: POST http://localhost:8080/api/usuarios
-     * Propósito: Registrar un nuevo empleado.
-     */
+    // POST: /api/usuarios
     @PostMapping
-    public Usuario registrarNuevoEmpleado(@RequestHeader("empresa-id") Long empresaId, 
-                                          @RequestBody Usuario nuevoUsuario) {
+    public ResponseEntity<UsuarioResponseDTO> registrarUsuario(
+            @RequestHeader("empresa-id") Long empresaId,
+            @RequestBody UsuarioRequestDTO dto) {
         
-        // Regla de Oro de Seguridad: Forzamos a que el nuevo usuario 
-        // pertenezca a la misma empresa del jefe que lo está creando.
-        nuevoUsuario.setEmpresaId(empresaId);
-        
-        usuarioService.registrarUsuario(nuevoUsuario);
-        return nuevoUsuario;
+        UsuarioResponseDTO creado = usuarioService.registrarUsuario(dto, empresaId);
+        return new ResponseEntity<>(creado, HttpStatus.CREATED);
     }
 
-    /**
-     * URL: DELETE http://localhost:8080/api/usuarios/2
-     * Propósito: Desactivar a un trabajador (Borrado Lógico).
-     */
-    @DeleteMapping("/{id}")
-    public String desactivarEmpleado(@RequestHeader("empresa-id") Long empresaId, @PathVariable Long id) {
-        usuarioService.desactivarUsuario(id, empresaId);
-        return "Usuario desactivado correctamente.";
+    // GET: /api/usuarios
+    @GetMapping
+    public ResponseEntity<List<UsuarioResponseDTO>> listarUsuarios(
+            @RequestHeader("empresa-id") Long empresaId) {
+        
+        return ResponseEntity.ok(usuarioService.listarUsuariosPorEmpresa(empresaId));
     }
+
+    // DELETE: /api/usuarios/1
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> desactivarUsuario(
+            @PathVariable Long id,
+            @RequestHeader("empresa-id") Long empresaId) {
+        
+        usuarioService.desactivarUsuario(id, empresaId);
+        return ResponseEntity.noContent().build(); // Devuelve 204 No Content
+    } 
 }  
