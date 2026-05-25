@@ -11,35 +11,31 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/usuarios")
-
 public class UsuarioController {
-   private final UsuarioService usuarioService;
+
+    private final UsuarioService usuarioService;
 
     public UsuarioController(UsuarioService usuarioService) {
         this.usuarioService = usuarioService;
     }
 
-    // POST: /api/usuarios/login?usuario=admin&contrasena=1234
-    @PostMapping("/login")
-    public ResponseEntity<UsuarioResponseDTO> login(
-            @RequestParam String usuario, 
-            @RequestParam String contrasena) {
-        
-        UsuarioResponseDTO response = usuarioService.autenticarUsuario(usuario, contrasena);
-        return ResponseEntity.ok(response);
-    }
-
-    // POST: /api/usuarios
+    /**
+     * POST /api/usuarios
+     * Crea un nuevo usuario (Vendedor o Almacenero) protegiendo su contraseña.
+     */
     @PostMapping
-    public ResponseEntity<UsuarioResponseDTO> registrarUsuario(
+    public ResponseEntity<UsuarioResponseDTO> crearUsuario(
             @RequestHeader("empresa-id") Long empresaId,
             @RequestBody UsuarioRequestDTO dto) {
         
-        UsuarioResponseDTO creado = usuarioService.registrarUsuario(dto, empresaId);
-        return new ResponseEntity<>(creado, HttpStatus.CREATED);
+        UsuarioResponseDTO nuevoUsuario = usuarioService.registrarUsuario(dto, empresaId);
+        return new ResponseEntity<>(nuevoUsuario, HttpStatus.CREATED);
     }
 
-    // GET: /api/usuarios
+    /**
+     * GET /api/usuarios
+     * Lista a todo el personal de la empresa usando DTOs para no exponer contraseñas encriptadas.
+     */
     @GetMapping
     public ResponseEntity<List<UsuarioResponseDTO>> listarUsuarios(
             @RequestHeader("empresa-id") Long empresaId) {
@@ -47,13 +43,17 @@ public class UsuarioController {
         return ResponseEntity.ok(usuarioService.listarUsuariosPorEmpresa(empresaId));
     }
 
-    // DELETE: /api/usuarios/1
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> desactivarUsuario(
+    /**
+     * PATCH /api/usuarios/{id}/estado?activo=true/false
+     * Activa o desactiva a un empleado (Baja lógica).
+     */
+    @PatchMapping("/{id}/estado")
+    public ResponseEntity<Void> cambiarEstado(
             @PathVariable Long id,
-            @RequestHeader("empresa-id") Long empresaId) {
+            @RequestHeader("empresa-id") Long empresaId,
+            @RequestParam boolean activo) {
         
-        usuarioService.desactivarUsuario(id, empresaId);
-        return ResponseEntity.noContent().build(); // Devuelve 204 No Content
-    } 
+        usuarioService.cambiarEstadoActivo(id, empresaId, activo);
+        return ResponseEntity.noContent().build();
+    }
 }  
